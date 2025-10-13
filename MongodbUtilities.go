@@ -2,6 +2,7 @@ package mongodbutilities
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -156,8 +157,11 @@ func DeleteModel(instance BaseModel, database *mongo.Database, collectionName st
 
 // Initializes a Mongodb database connection from a URI and a database name
 func GetDatabase(url, name string) (*mongo.Database, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	clientOptions := options.Client().ApplyURI(url)
-	client, err := mongo.Connect(context.TODO(), clientOptions)
+	client, err := mongo.Connect(ctx, clientOptions)
 
 	if err != nil {
 		return nil, err
@@ -173,8 +177,11 @@ func InsertDocument(
 	collectionName string,
 	document interface{},
 ) (*mongo.InsertOneResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.InsertOne(context.TODO(), document)
+	res, err := collection.InsertOne(ctx, document)
 
 	return res, err
 }
@@ -185,8 +192,11 @@ func InsertDocuments(
 	collectionName string,
 	document []interface{},
 ) (*mongo.InsertManyResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.InsertMany(context.TODO(), document)
+	res, err := collection.InsertMany(ctx, document)
 
 	return res, err
 }
@@ -199,8 +209,11 @@ func GetDocument(
 	collectionName string,
 	query *QuerySet,
 ) (*mongo.SingleResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res := collection.FindOne(context.TODO(), query.Build())
+	res := collection.FindOne(ctx, query.Build())
 
 	if res.Err() != nil {
 		if res.Err() == mongo.ErrNoDocuments {
@@ -218,14 +231,18 @@ func GetDocument(
 func GetDocuments(
 	database *mongo.Database,
 	collectionName string,
-	query *QuerySet) (*mongo.Cursor, error) {
+	query *QuerySet,
+) (*mongo.Cursor, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
 
 	if query.FindOptions != nil {
-		return collection.Find(context.TODO(), query.Build(), query.FindOptions)
+		return collection.Find(ctx, query.Build(), query.FindOptions)
 
 	} else {
-		return collection.Find(context.TODO(), query.Build())
+		return collection.Find(ctx, query.Build())
 	}
 }
 
@@ -237,8 +254,11 @@ func UpdateDocument(
 	query *QuerySet,
 	update interface{},
 ) (*mongo.UpdateResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.UpdateOne(context.TODO(), query.Build(), update)
+	res, err := collection.UpdateOne(ctx, query.Build(), update)
 
 	return res, err
 }
@@ -251,8 +271,11 @@ func UpdateDocuments(
 	query *QuerySet,
 	update interface{},
 ) (*mongo.UpdateResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.UpdateMany(context.TODO(), query.Build(), update)
+	res, err := collection.UpdateMany(ctx, query.Build(), update)
 
 	return res, err
 }
@@ -264,8 +287,11 @@ func DeleteDocument(
 	collectionName string,
 	query *QuerySet,
 ) (*mongo.DeleteResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.DeleteOne(context.TODO(), query.Build())
+	res, err := collection.DeleteOne(ctx, query.Build())
 
 	return res, err
 }
@@ -277,8 +303,11 @@ func DeleteDocuments(
 	collectionName string,
 	query *QuerySet,
 ) (*mongo.DeleteResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.DeleteMany(context.TODO(), query.Build())
+	res, err := collection.DeleteMany(ctx, query.Build())
 
 	return res, err
 }
@@ -290,8 +319,11 @@ func CountDocuments(
 	collectionName string,
 	query *QuerySet,
 ) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.CountDocuments(context.TODO(), query.Build())
+	res, err := collection.CountDocuments(ctx, query.Build())
 
 	return res, err
 }
@@ -302,13 +334,19 @@ func AggregateDocuments(
 	collectionName string,
 	parameters interface{},
 ) (*mongo.Cursor, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
 	collection := database.Collection(collectionName)
-	res, err := collection.Aggregate(context.TODO(), parameters)
+	res, err := collection.Aggregate(ctx, parameters)
 
 	return res, err
 }
 
 // Helper function for listing a database collections.
 func ListCollections(database *mongo.Database) ([]string, error) {
-	return database.ListCollectionNames(context.TODO(), bson.M{})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	return database.ListCollectionNames(ctx, bson.M{})
 }
