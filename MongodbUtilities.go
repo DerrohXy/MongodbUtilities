@@ -158,6 +158,7 @@ func DeleteModel(instance BaseModel, database *mongo.Database, collectionName st
 // Initializes a Mongodb database connection from a URI and a database name
 func GetDatabase(url, name string) (*mongo.Database, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	clientOptions := options.Client().ApplyURI(url)
@@ -178,6 +179,7 @@ func InsertDocument(
 	document interface{},
 ) (*mongo.InsertOneResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -193,6 +195,7 @@ func InsertDocuments(
 	document []interface{},
 ) (*mongo.InsertManyResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -210,6 +213,7 @@ func GetDocument(
 	query *QuerySet,
 ) (*mongo.SingleResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -234,6 +238,7 @@ func GetDocuments(
 	query *QuerySet,
 ) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -255,6 +260,7 @@ func UpdateDocument(
 	update interface{},
 ) (*mongo.UpdateResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -272,6 +278,7 @@ func UpdateDocuments(
 	update interface{},
 ) (*mongo.UpdateResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -288,6 +295,7 @@ func DeleteDocument(
 	query *QuerySet,
 ) (*mongo.DeleteResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -304,6 +312,7 @@ func DeleteDocuments(
 	query *QuerySet,
 ) (*mongo.DeleteResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -320,6 +329,7 @@ func CountDocuments(
 	query *QuerySet,
 ) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -335,6 +345,7 @@ func AggregateDocuments(
 	parameters interface{},
 ) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	collection := database.Collection(collectionName)
@@ -343,9 +354,34 @@ func AggregateDocuments(
 	return res, err
 }
 
+// Helper function for creating an index fo a single field
+func CreateIndex(
+	database *mongo.Database,
+	collectionName string,
+	field string,
+	value int8,
+) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
+	defer cancel()
+
+	collection := database.Collection(collectionName)
+	indexModel := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: field, Value: value},
+		},
+		Options: options.Index().SetUnique(true),
+	}
+
+	_, err := collection.Indexes().CreateOne(ctx, indexModel)
+
+	return err
+}
+
 // Helper function for listing a database collections.
 func ListCollections(database *mongo.Database) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
 	defer cancel()
 
 	return database.ListCollectionNames(ctx, bson.M{})
