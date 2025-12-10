@@ -84,6 +84,32 @@ func (instance *QuerySet) Skip(limit int) *QuerySet {
 	return instance
 }
 
+// Selects specific fields
+func (instance *QuerySet) Fields(fields ...string) *QuerySet {
+	instance.initializeOptions()
+	filterFields := make(map[string]int8)
+	for _, field := range fields {
+		filterFields[field] = 1
+	}
+
+	instance.FindOptions = instance.FindOptions.SetProjection(filterFields)
+
+	return instance
+}
+
+// Exclude specific fields
+func (instance *QuerySet) ExcludeFields(fields ...string) *QuerySet {
+	instance.initializeOptions()
+	filterFields := make(map[string]int8)
+	for _, field := range fields {
+		filterFields[field] = 0
+	}
+
+	instance.FindOptions = instance.FindOptions.SetProjection(filterFields)
+
+	return instance
+}
+
 // Initializes a QuerySet instance for an initial set of queries
 func CreateQuery(queries ...interface{}) *QuerySet {
 	var query QuerySet
