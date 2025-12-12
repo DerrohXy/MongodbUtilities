@@ -20,6 +20,16 @@ type QuerySet struct {
 	UpdateOptions *options.UpdateOptions
 	// Additional options for the DeleteOne() and DeleteMany() collection operations.
 	DeleteOptions *options.DeleteOptions
+	// Options for join operation
+	Joins []QueryJoin
+}
+
+// Info required to perform a join on another collection
+type QueryJoin struct {
+	Field          string
+	JoinField      string
+	JoinCollection string
+	Query          *QuerySet
 }
 
 // Adds a new query filter, it will be AND-ed with the preceeding filters.
@@ -36,15 +46,79 @@ func (instance *QuerySet) Exclude(queries ...interface{}) *QuerySet {
 	return instance
 }
 
-// Build the final filter to be passed to a retrieval operation
-func (instance *QuerySet) Build() bson.M {
-	query := bson.M{"$and": instance.Query}
+// HIGHLY UNTESTED
+// Adds a join query to be evaluated to another collection
+func (instance *QuerySet) Join(
+	field, joinField, joinCollection string, joinQuery *QuerySet,
+) *QuerySet {
+	instance.Joins = append(instance.Joins, QueryJoin{
+		Field:          field,
+		JoinField:      joinField,
+		JoinCollection: joinCollection,
+		Query:          joinQuery,
+	})
 
-	return query
+	return instance
+}
+
+// Evaluates a collection join
+// Create a query obejct to be evaluated in the primary collection being queried
+func EvaluateJoin(
+	database *mongo.Database,
+	join *QueryJoin,
+) bson.M {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+
+	defer cancel()
+
+	res, err := GetDocuments(
+		database,
+		join.JoinCollection,
+		// join.Query.Fields(join.JoinField), // WILL DEFINITELY BE TOO SLOW
+		join.Query.Limit(1000).Fields(join.JoinField),
+	)
+	if res == nil || err != nil {
+		return nil
+	}
+
+	var entries []map[string]interface{}
+	err = res.All(ctx, &entries)
+
+	if err != nil {
+		return nil
+	}
+
+	_ids := make([]interface{}, len(entries))
+	for i_, entry := range entries {
+		_ids[i_] = entry[join.JoinField]
+	}
+
+	return bson.M{join.Field: bson.M{"$in": _ids}}
+}
+
+// Build the final filter to be passed to a retrieval operation
+func (instance *QuerySet) Build(database *mongo.Database) bson.M {
+	if len(instance.Joins) > 0 {
+		for _, join := range instance.Joins {
+			joinQuery := EvaluateJoin(database, &join)
+
+			if joinQuery != nil {
+				instance.Filter(joinQuery)
+			}
+		}
+
+		query := bson.M{"$and": instance.Query}
+
+		return query
+	} else {
+		query := bson.M{"$and": instance.Query}
+
+		return query
+	}
 }
 
 // Initializes the additional options.(for Find, Update*, and Delete* operations)
-func (instance *QuerySet) initializeOptions() *QuerySet {
+func (instance *QuerySet) InitializeOptions() *QuerySet {
 	if instance.FindOptions == nil {
 		instance.FindOptions = options.Find()
 	}
@@ -62,7 +136,7 @@ func (instance *QuerySet) initializeOptions() *QuerySet {
 
 // Sets the limit option for a Find operation
 func (instance *QuerySet) Limit(limit int) *QuerySet {
-	instance.initializeOptions()
+	instance.InitializeOptions()
 	instance.FindOptions = instance.FindOptions.SetLimit(int64(limit))
 
 	return instance
@@ -70,7 +144,7 @@ func (instance *QuerySet) Limit(limit int) *QuerySet {
 
 // Sets the sort options for a Finf operation
 func (instance *QuerySet) Sort(sort interface{}) *QuerySet {
-	instance.initializeOptions()
+	instance.InitializeOptions()
 	instance.FindOptions = instance.FindOptions.SetSort(sort)
 
 	return instance
@@ -78,7 +152,7 @@ func (instance *QuerySet) Sort(sort interface{}) *QuerySet {
 
 // Sets the skip option for a Find operation.
 func (instance *QuerySet) Skip(limit int) *QuerySet {
-	instance.initializeOptions()
+	instance.InitializeOptions()
 	instance.FindOptions = instance.FindOptions.SetSkip(int64(limit))
 
 	return instance
@@ -86,7 +160,7 @@ func (instance *QuerySet) Skip(limit int) *QuerySet {
 
 // Selects specific fields
 func (instance *QuerySet) Fields(fields ...string) *QuerySet {
-	instance.initializeOptions()
+	instance.InitializeOptions()
 	filterFields := make(map[string]int8)
 	for _, field := range fields {
 		filterFields[field] = 1
@@ -99,8 +173,9 @@ func (instance *QuerySet) Fields(fields ...string) *QuerySet {
 
 // Exclude specific fields
 func (instance *QuerySet) ExcludeFields(fields ...string) *QuerySet {
-	instance.initializeOptions()
+	instance.InitializeOptions()
 	filterFields := make(map[string]int8)
+
 	for _, field := range fields {
 		filterFields[field] = 0
 	}
@@ -243,7 +318,7 @@ func GetDocument(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res := collection.FindOne(ctx, query.Build())
+	res := collection.FindOne(ctx, query.Build(database))
 
 	if res.Err() != nil {
 		if res.Err() == mongo.ErrNoDocuments {
@@ -270,10 +345,10 @@ func GetDocuments(
 	collection := database.Collection(collectionName)
 
 	if query.FindOptions != nil {
-		return collection.Find(ctx, query.Build(), query.FindOptions)
+		return collection.Find(ctx, query.Build(database), query.FindOptions)
 
 	} else {
-		return collection.Find(ctx, query.Build())
+		return collection.Find(ctx, query.Build(database))
 	}
 }
 
@@ -290,7 +365,14 @@ func UpdateDocument(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.UpdateOne(ctx, query.Build(), update)
+
+	if query.UpdateOptions != nil {
+		res, err := collection.UpdateOne(ctx, query.Build(database), update, query.UpdateOptions)
+
+		return res, err
+	}
+
+	res, err := collection.UpdateOne(ctx, query.Build(database), update)
 
 	return res, err
 }
@@ -308,7 +390,14 @@ func UpdateDocuments(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.UpdateMany(ctx, query.Build(), update)
+
+	if query.UpdateOptions != nil {
+		res, err := collection.UpdateMany(ctx, query.Build(database), update, query.UpdateOptions)
+
+		return res, err
+	}
+
+	res, err := collection.UpdateMany(ctx, query.Build(database), update)
 
 	return res, err
 }
@@ -325,7 +414,14 @@ func DeleteDocument(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.DeleteOne(ctx, query.Build())
+
+	if query.DeleteOptions != nil {
+		res, err := collection.DeleteOne(ctx, query.Build(database), query.DeleteOptions)
+
+		return res, err
+	}
+
+	res, err := collection.DeleteOne(ctx, query.Build(database))
 
 	return res, err
 }
@@ -342,7 +438,14 @@ func DeleteDocuments(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.DeleteMany(ctx, query.Build())
+
+	if query.DeleteOptions != nil {
+		res, err := collection.DeleteMany(ctx, query.Build(database), query.DeleteOptions)
+
+		return res, err
+	}
+
+	res, err := collection.DeleteMany(ctx, query.Build(database))
 
 	return res, err
 }
@@ -359,7 +462,7 @@ func CountDocuments(
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.CountDocuments(ctx, query.Build())
+	res, err := collection.CountDocuments(ctx, query.Build(database))
 
 	return res, err
 }
@@ -368,34 +471,48 @@ func CountDocuments(
 func AggregateDocuments(
 	database *mongo.Database,
 	collectionName string,
-	parameters interface{},
+	pipeline interface{},
 ) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 
 	defer cancel()
 
 	collection := database.Collection(collectionName)
-	res, err := collection.Aggregate(ctx, parameters)
+	res, err := collection.Aggregate(ctx, pipeline)
 
 	return res, err
 }
 
+// Parameter for index creation
+type IndexField struct {
+	Field     string
+	Ascending bool
+}
+
 // Helper function for creating an index fo a single field
-func CreateIndex(
+func CreateIndexes(
 	database *mongo.Database,
 	collectionName string,
-	field string,
-	value int8,
+	fields ...IndexField,
 ) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 
 	defer cancel()
 
 	collection := database.Collection(collectionName)
+
+	var models bson.M = bson.M{}
+
+	for _, field := range fields {
+		if field.Ascending {
+			models[field.Field] = 1
+		} else {
+			models[field.Field] = -1
+		}
+	}
+
 	indexModel := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: field, Value: value},
-		},
+		Keys:    models,
 		Options: options.Index().SetUnique(true),
 	}
 
