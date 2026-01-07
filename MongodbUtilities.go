@@ -13,7 +13,7 @@ import (
 // Emulates a query builder object that encompasses a collection of query filters
 type QuerySet struct {
 	// Includes all AND-ed query filters
-	Query []interface{}
+	Query []map[string]interface{}
 	// Additional options for the Find() collection operation.
 	FindOptions *options.FindOptions
 	// Aditional options for the UpdateOne() and UpdateMany() collection operation.
@@ -33,14 +33,14 @@ type QueryJoin struct {
 }
 
 // Adds a new query filter, it will be AND-ed with the preceeding filters.
-func (instance *QuerySet) Filter(queries ...interface{}) *QuerySet {
+func (instance *QuerySet) Filter(queries ...map[string]interface{}) *QuerySet {
 	instance.Query = append(instance.Query, queries...)
 
 	return instance
 }
 
 // Adds an exclusion filter for the provided filters
-func (instance *QuerySet) Exclude(queries ...interface{}) *QuerySet {
+func (instance *QuerySet) Exclude(queries ...map[string]interface{}) *QuerySet {
 	instance.Query = append(instance.Query, bson.M{"$nor": queries})
 
 	return instance
@@ -74,8 +74,7 @@ func EvaluateJoin(
 	res, err := GetDocuments(
 		database,
 		join.JoinCollection,
-		// join.Query.Fields(join.JoinField), // WILL DEFINITELY BE TOO SLOW
-		join.Query.Limit(1000).Fields(join.JoinField),
+		join.Query.Fields(join.JoinField), // WILL DEFINITELY BE TOO SLOW
 	)
 	if res == nil || err != nil {
 		return nil
@@ -186,7 +185,7 @@ func (instance *QuerySet) ExcludeFields(fields ...string) *QuerySet {
 }
 
 // Initializes a QuerySet instance for an initial set of queries
-func CreateQuery(queries ...interface{}) *QuerySet {
+func CreateQuery(queries ...map[string]interface{}) *QuerySet {
 	var query QuerySet
 	query.Filter(queries...)
 
