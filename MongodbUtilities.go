@@ -20,16 +20,6 @@ type QuerySet struct {
 	UpdateOptions *options.UpdateOptions
 	// Additional options for the DeleteOne() and DeleteMany() collection operations.
 	DeleteOptions *options.DeleteOptions
-	// Options for join operation
-	Joins []QueryJoin
-}
-
-// Info required to perform a join on another collection
-type QueryJoin struct {
-	Field          string
-	JoinField      string
-	JoinCollection string
-	Query          *QuerySet
 }
 
 // Adds a new query filter, it will be AND-ed with the preceeding filters.
@@ -46,74 +36,11 @@ func (instance *QuerySet) Exclude(queries ...map[string]interface{}) *QuerySet {
 	return instance
 }
 
-// HIGHLY UNTESTED
-// Adds a join query to be evaluated to another collection
-func (instance *QuerySet) Join(
-	field, joinField, joinCollection string, joinQuery *QuerySet,
-) *QuerySet {
-	instance.Joins = append(instance.Joins, QueryJoin{
-		Field:          field,
-		JoinField:      joinField,
-		JoinCollection: joinCollection,
-		Query:          joinQuery,
-	})
-
-	return instance
-}
-
-// Evaluates a collection join
-// Create a query obejct to be evaluated in the primary collection being queried
-func EvaluateJoin(
-	database *mongo.Database,
-	join *QueryJoin,
-) bson.M {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-
-	defer cancel()
-
-	res, err := GetDocuments(
-		database,
-		join.JoinCollection,
-		join.Query.Fields(join.JoinField), // WILL DEFINITELY BE TOO SLOW
-	)
-	if res == nil || err != nil {
-		return nil
-	}
-
-	var entries []map[string]interface{}
-	err = res.All(ctx, &entries)
-
-	if err != nil {
-		return nil
-	}
-
-	_ids := make([]interface{}, len(entries))
-	for i_, entry := range entries {
-		_ids[i_] = entry[join.JoinField]
-	}
-
-	return bson.M{join.Field: bson.M{"$in": _ids}}
-}
-
 // Build the final filter to be passed to a retrieval operation
 func (instance *QuerySet) Build(database *mongo.Database) bson.M {
-	if len(instance.Joins) > 0 {
-		for _, join := range instance.Joins {
-			joinQuery := EvaluateJoin(database, &join)
+	query := bson.M{"$and": instance.Query}
 
-			if joinQuery != nil {
-				instance.Filter(joinQuery)
-			}
-		}
-
-		query := bson.M{"$and": instance.Query}
-
-		return query
-	} else {
-		query := bson.M{"$and": instance.Query}
-
-		return query
-	}
+	return query
 }
 
 // Initializes the additional options.(for Find, Update*, and Delete* operations)
